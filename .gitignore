@@ -1,8 +1,18 @@
 # Compiled class file
 *.class
+target/
 
 # Log file
 *.log
+
+# Segredos locais (SMTP_APP_PASSWORD etc - nunca versionados, secao 6.3 da spec)
+.env
+
+# macOS
+.DS_Store
+
+.idea/
+.vscode/
 
 # BlueJ files
 *.ctxt

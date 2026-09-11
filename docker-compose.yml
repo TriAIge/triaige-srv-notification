@@ -1,0 +1,49 @@
+services:
+
+  # ── triaige-srv-notification ────────────────────────────────────────────────
+  # Sem LocalStack: as filas SQS (Q3 + retry/DLQ) sao resolvidas direto na AWS real pelo nome
+  # (GetQueueUrl em runtime, ver SqsQueueUrlResolver) - nao ha endpoint override nenhum, mesmo
+  # padrao ja adotado pelo triaige-srv-orchestrator. Credenciais: AWS_ACCESS_KEY_ID/
+  # AWS_SECRET_ACCESS_KEY/AWS_SESSION_TOKEN no .env (se preenchidos) OU o profile "default" do
+  # ~/.aws/credentials do host, montado abaixo.
+  srv-notification:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: triaige-srv-notification
+    restart: unless-stopped
+    volumes:
+      - ${HOME}/.aws:/home/appuser/.aws:ro
+    environment:
+      DB_URL: ${DB_URL}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_APP_PASSWORD: ${SMTP_APP_PASSWORD}
+      NOTIFICATION_FROM_NAME: ${NOTIFICATION_FROM_NAME}
+      DASHBOARD_BASE_URL: ${DASHBOARD_BASE_URL}
+      AWS_REGION: ${AWS_REGION}
+      AWS_PROFILE: ${AWS_PROFILE}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN}
+      RESULTS_READY_QUEUE_NAME: ${RESULTS_READY_QUEUE_NAME}
+      NOTIFICATION_RETRY_QUEUE_NAME: ${NOTIFICATION_RETRY_QUEUE_NAME}
+      NOTIFICATION_RETRY_DLQ_NAME: ${NOTIFICATION_RETRY_DLQ_NAME}
+      RESULTS_READY_CONSUMER_ENABLED: ${RESULTS_READY_CONSUMER_ENABLED}
+      RETRY_CONSUMER_ENABLED: ${RETRY_CONSUMER_ENABLED}
+      CLOUDWATCH_METRICS_ENABLED: ${CLOUDWATCH_METRICS_ENABLED}
+      # Callback para o triaige-srv-orchestrator (POST .../notification-result). host.docker.internal
+      # porque o orchestrator roda num compose/rede Docker separado deste, mesma convencao ja usada
+      # por MCP_AI_BASE_URL/ORCHESTRATOR_BASE_URL entre orchestrator e mcp-ai.
+      ORCHESTRATOR_BASE_URL: ${ORCHESTRATOR_BASE_URL}
+      NOTIFICATION_INTERNAL_TOKEN: ${NOTIFICATION_INTERNAL_TOKEN}
+    ports:
+      - "${SRV_NOTIFICATION_PORT:-8083}:8083"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10

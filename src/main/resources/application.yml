@@ -1,0 +1,87 @@
+spring:
+  application:
+    name: triaige-srv-notification
+
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/triaige?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true}
+    username: ${DB_USERNAME:triaige}
+    password: ${DB_PASSWORD:triaige}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  mail:
+    host: ${SMTP_HOST:smtp.gmail.com}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USER:}
+    password: ${SMTP_APP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 10000
+          timeout: 10000
+          writetimeout: 10000
+
+notification:
+  # Base do link do Dashboard (fora do escopo desta fase) incluido no corpo do e-mail.
+  dashboard-base-url: ${DASHBOARD_BASE_URL:http://localhost:3000}
+  from-name: ${NOTIFICATION_FROM_NAME:Triaige}
+  # Callback POST .../sessions/{sessionId}/notification-result no Orchestrator, ao concluir a
+  # notificacao (sucesso ou falha) de todos os destinatarios de uma sessao. Mesmo esquema de
+  # X-Internal-Token usado pelo triaige-srv-mcp-ai.
+  orchestrator-callback:
+    base-url: ${ORCHESTRATOR_BASE_URL:http://localhost:8080}
+    result-path-template: /api/orchestrator/v1/sessions/{sessionId}/notification-result
+    internal-token: ${NOTIFICATION_INTERNAL_TOKEN:dev-local-internal-token}
+    connect-timeout-ms: 5000
+    read-timeout-ms: 10000
+
+server:
+  port: ${SERVER_PORT:8083}
+
+aws:
+  region: ${AWS_REGION:us-east-1}
+  sqs:
+    results-ready-queue-name: ${RESULTS_READY_QUEUE_NAME:triaige-results-ready}
+    notification-retry-queue-name: ${NOTIFICATION_RETRY_QUEUE_NAME:triaige-notification-retry}
+    notification-retry-dlq-name: ${NOTIFICATION_RETRY_DLQ_NAME:triaige-notification-retry-dlq}
+    results-ready-consumer:
+      enabled: ${RESULTS_READY_CONSUMER_ENABLED:true}
+      poll-interval-ms: ${RESULTS_READY_POLL_INTERVAL_MS:5000}
+      wait-time-seconds: ${RESULTS_READY_WAIT_TIME_SECONDS:10}
+      max-messages: ${RESULTS_READY_MAX_MESSAGES:10}
+    retry-consumer:
+      enabled: ${RETRY_CONSUMER_ENABLED:true}
+      poll-interval-ms: ${RETRY_POLL_INTERVAL_MS:5000}
+      wait-time-seconds: ${RETRY_WAIT_TIME_SECONDS:10}
+      max-messages: ${RETRY_MAX_MESSAGES:10}
+
+management:
+  health:
+    # O health check do target group deve refletir se o PROCESSO esta saudavel, nao
+    # se o Gmail esta disponivel agora. Sem isso, o indicador padrao do Actuator autentica no
+    # SMTP a cada chamada de /actuator/health e derruba as DUAS instancias da ALB junto (mesmo
+    # servico replicado) por uma instabilidade do lado do Gmail, que ja tem tratamento proprio
+    # (retry/DLQ) - nao deveria também tirar o worker de rotacao.
+    mail:
+      enabled: false
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+  cloudwatch:
+    metrics:
+      export:
+        enabled: ${CLOUDWATCH_METRICS_ENABLED:false}
+        namespace: Triaige/Notification
+        step: 1m
+
+logging:
+  level:
+    br.com.triaige: ${LOG_LEVEL:INFO}
+    org.springframework.mail: WARN
