@@ -48,6 +48,10 @@ triaige-srv-notification
 
 ## Arquitetura interna
 
+Decisões de arquitetura registradas em [`docs/adr/`](docs/adr/):
+
+- [0001 — Retry próprio por fila com DLQ](docs/adr/0001-retry-proprio-por-fila-com-dlq.md)
+
 Arquitetura hexagonal (ports & adapters), validada por `HexagonalArchitectureTest` (ArchUnit: `domain` e `application` não podem depender de `jakarta.mail`, `com.mysql`, `software.amazon.awssdk`, `org.springframework` nem `java.sql`).
 
 ```text
