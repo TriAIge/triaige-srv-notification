@@ -1,188 +1,159 @@
 # TriAIge / triaige-srv-notification
 
-> Serviço de notificação por e-mail: consome o resultado final da triagem e envia o relatório completo aos destinatários cadastrados do escritório.
+> Serviço de notificação por e-mail: envia o relatório final da triagem aos destinatários do escritório.
+
+![Java](https://img.shields.io/badge/Java_21-007396?style=flat-square&logo=openjdk&logoColor=white)
+![Spring Boot](https://img.shields.io/badge/Spring_Boot_3.5-6DB33F?style=flat-square&logo=springboot&logoColor=white)
+![MySQL](https://img.shields.io/badge/MySQL_8-4479A1?style=flat-square&logo=mysql&logoColor=white)
+![AWS](https://img.shields.io/badge/AWS_S3_%7C_SQS-232F3E?style=flat-square&logo=amazonwebservices&logoColor=white)
+![Licença](https://img.shields.io/badge/licen%C3%A7a-MIT-blue?style=flat-square)
+
+Parte da plataforma [TriAIge](https://github.com/TriAIge) — triagem jurídica assistida por IA.
 
 ## Sobre o projeto
 
-O **TriAIge** é uma plataforma de triagem jurídica assistida por IA: escritórios de advocacia enviam os documentos de um caso e recebem de volta um relatório estruturado, com o texto sensível anonimizado antes de qualquer processamento por IA.
+Este serviço é um worker SQS que fecha o fluxo de triagem do lado do escritório. Consome o "resultado pronto" publicado pelo `triaige-srv-orchestrator`, busca o relatório no S3 *curated* e envia um e-mail por destinatário cadastrado, com retry e DLQ em caso de falha, reportando o resultado final ao orchestrator.
 
-Este repositório contém o serviço responsável por:
-
-- Consumir o evento de "resultado pronto" publicado pelo `triaige-srv-orchestrator` ao final da análise de IA.
-- Localizar os destinatários cadastrados da sessão e enviar um e-mail com o relatório de triagem completo (buscado do S3) no corpo.
-- Controlar retry/DLQ por destinatário em caso de falha de envio, e reportar o resultado final ao Orchestrator.
-
-## Papel deste serviço na arquitetura
+## Papel na arquitetura
 
 ```text
 triaige-srv-orchestrator
-   ↓ (Q3: resultado pronto)
+   ↓ 1. Q3 triaige-results-ready (resultado pronto)
 triaige-srv-notification
-   ├── busca o relatório completo no S3 (bucket curated)
-   ├── envia e-mail por destinatário cadastrado (SMTP Gmail)
-   ├── falha → agenda retry (fila própria) até esgotar tentativas → DLQ
-   └── reporta o resultado final (callback HTTP) ──→ triaige-srv-orchestrator
+   ├── 2. claim atômico da entrega (evita envio duplicado em redelivery do SQS)
+   ├── 3. busca o relatório (Markdown) no S3 curated e renderiza como HTML
+   ├── 4. resolve os destinatários da sessão
+   ├── 5. envia um e-mail por destinatário (SMTP Gmail)
+   ├── 6. falha retentável → triaige-notification-retry (30s, 2min, 10min) → DLQ
+   └── 7. callback POST /api/orchestrator/v1/sessions/{id}/notification-result ──→ triaige-srv-orchestrator
 ```
 
 ## Responsabilidades
 
-Este serviço é responsável por:
-
-- Consumir a fila de resultados (`triaige-results-ready`, Q3) publicada pelo Orchestrator.
-- Buscar o relatório de triagem (Markdown) já anonimizado no S3 e renderizá-lo como HTML para o corpo do e-mail.
-- Resolver os destinatários cadastrados da sessão (com fallback para o cadastro de contatos do escritório) e enviar um e-mail por destinatário via SMTP.
-- Registrar cada tentativa de envio (`notification_deliveries`) com controle de concorrência (claim atômico) para nunca duplicar um envio já em andamento.
-- Reagendar falhas retentáveis em uma fila própria de retry, com backoff crescente, e mover para DLQ ao esgotar as tentativas.
-- Reportar de volta ao Orchestrator (callback HTTP) o resultado final da notificação da sessão (sucesso, falha parcial ou falha total).
-- Auditoria e métricas de todo o fluxo.
+- Consumir a fila `triaige-results-ready` (Q3).
+- Buscar o relatório já anonimizado no S3 *curated* e renderizá-lo como HTML no corpo do e-mail.
+- Resolver os destinatários da sessão e enviar um e-mail por destinatário via SMTP.
+- Registrar cada tentativa em `notification_deliveries`, com claim atômico para nunca duplicar um envio em andamento.
+- Reagendar falhas retentáveis na fila de retry e mover para a DLQ ao esgotar as tentativas.
+- Reportar ao orchestrator o resultado final da sessão (sucesso, falha parcial ou falha total).
+- Auditoria e métricas do fluxo.
 
 ### Fora do escopo
 
-Este serviço não é responsável por:
+- Gerar ou renderizar o relatório — `triaige-srv-orchestrator`.
+- OCR, anonimização, agrupamento e raciocínio de IA — `triaige-srv-mcp-ai`.
+- Cadastro dos contatos do escritório — `triaige-front-nextjs`.
+- Provisionamento de rede, filas e banco — `triaige-infra`.
+- Canais além de e-mail (SMS, WhatsApp): não implementados, mas a arquitetura os suporta por novos adapters de `NotificationChannelPort`.
 
-- Gerar ou renderizar o relatório de triagem — isso é feito pelo `triaige-srv-orchestrator`, que grava o resultado final no S3.
-- OCR, anonimização, agrupamento de documentos ou raciocínio de IA — isso é feito pelo `triaige-srv-mcp-ai`.
-- Provisionamento de infraestrutura (rede, filas, banco) — isso é feito pelo `triaige-infra`.
-- Outros canais de notificação além de e-mail (SMS, WhatsApp) — não implementados nesta fase, mas suportados pela arquitetura via novos adapters de `NotificationChannelPort`.
+## Arquitetura interna
 
-## Arquitetura
-
-Arquitetura hexagonal (ports & adapters), validada automaticamente por `HexagonalArchitectureTest` (ArchUnit: `domain`/`application` não podem depender de `jakarta.mail`, `com.mysql`, `software.amazon.awssdk`, `org.springframework` ou `java.sql`):
+Arquitetura hexagonal (ports & adapters), validada por `HexagonalArchitectureTest` (ArchUnit: `domain` e `application` não podem depender de `jakarta.mail`, `com.mysql`, `software.amazon.awssdk`, `org.springframework` nem `java.sql`).
 
 ```text
-domain/         modelo + regras puras (Recipient, NotificationMessage, DeliveryResult,
-                DeliveryStatus, DeliveryErrorCode, RetryTicket, ResultsReadyEvent) e o
-                factory de conteúdo do e-mail (NotificationContentFactory) — zero dependência
-                de Spring/SMTP/JDBC/AWS SDK
-application/    ports (in/out) e casos de uso (SendCaseNotificationUseCase,
-                RetryCaseNotificationUseCase, NotificationSender, DeliveryOutcomeHandler,
-                NotificationOutcomeReporter) — classes Java simples, sem anotações Spring
-adapter/
-  in/sqs/       consumers de Q3 (ResultsReadyConsumer) e da fila de retry (RetryQueueConsumer)
-  out/email/    EmailSmtpGmailAdapter (única implementação de NotificationChannelPort) e
-                NotificationMetrics
-  out/s3/       S3ReportContentAdapter — leitura do relatório completo (bucket curated)
-  out/http/     OrchestratorCallbackHttpAdapter — reporta o resultado final ao Orchestrator
-  out/persistence/  adapters MySQL via JdbcTemplate (delivery, recipient, audit)
-  out/sqs/      publisher da fila de retry/DLQ
-config/         wiring Spring: beans de infra + construção manual dos casos de uso
+src/main/java/br/com/triaige/notification/
+├── domain/             modelo e regras puras (Recipient, NotificationMessage, DeliveryResult,
+│                       DeliveryStatus, DeliveryErrorCode, RetryTicket, ResultsReadyEvent) e
+│                       NotificationContentFactory, sem dependência de Spring, SMTP, JDBC ou AWS
+├── application/        ports (in/out) e casos de uso (SendCaseNotificationUseCase,
+│                       RetryCaseNotificationUseCase, NotificationSender, DeliveryOutcomeHandler,
+│                       NotificationOutcomeReporter), sem anotações Spring
+├── adapter/
+│   ├── in/sqs/         ResultsReadyConsumer (Q3) e RetryQueueConsumer
+│   ├── out/email/      EmailSmtpGmailAdapter (única NotificationChannelPort) e NotificationMetrics
+│   ├── out/s3/         S3ReportContentAdapter (leitura do relatório no curated)
+│   ├── out/http/       OrchestratorCallbackHttpAdapter
+│   ├── out/persistence/ adapters MySQL via JdbcTemplate (entregas, destinatários, auditoria)
+│   └── out/sqs/        publisher da fila de retry
+└── config/             wiring Spring e construção manual dos casos de uso
 ```
 
 ### Comunicação com outros serviços
 
 | Serviço / Recurso | Tipo | Finalidade |
 |---|---|---|
-| `triaige-srv-orchestrator` | HTTP / REST (callback) | Reporta o resultado final da notificação da sessão (`notification-result`) |
-| Fila de resultados (Q3) | SQS (consumer) | Recebe o "resultado pronto" publicado pelo Orchestrator |
-| Fila de retry + DLQ | SQS (producer/consumer) | Reagendamento de envios falhos e fallback ao esgotar tentativas |
-| MySQL | Banco de dados | Persistência de destinatários, entregas e auditoria (schema compartilhado `triaige`) |
-| S3 (bucket *curated*) | Storage | Leitura do relatório de triagem completo já anonimizado |
-| SMTP (Gmail) | API externa | Envio dos e-mails de notificação |
+| `triaige-srv-orchestrator` | HTTP (callback) | `POST /api/orchestrator/v1/sessions/{id}/notification-result` |
+| `triaige-results-ready` (Q3) | SQS (consumer) | "Resultado pronto" publicado pelo orchestrator |
+| `triaige-notification-retry` | SQS (producer/consumer) | Reagendamento de envios falhos |
+| S3 *curated* | Storage | Leitura do relatório final |
+| SMTP Gmail | Serviço externo | Envio dos e-mails |
+| MySQL (schema `triaige`) | Banco de dados | Compartilhado com os demais serviços |
 
-## Tecnologias utilizadas
+## Tecnologias
 
-- Java 21 + Spring Boot 3.5 (Web, Mail, JDBC, Validation, Actuator)
-- `spring-boot-starter-jdbc` com `JdbcTemplate` (sem JPA/Hibernate — upserts idempotentes e leituras simples)
-- MySQL (via `mysql-connector-j`)
-- AWS SDK v2 — SQS, S3
-- `commonmark` + extensão de tabelas GFM (renderização do relatório Markdown como HTML no corpo do e-mail)
+- Java 21, Spring Boot 3.5.0 (Web, Mail, JDBC, Validation, Actuator)
+- `JdbcTemplate`, sem JPA/Hibernate
+- MySQL 8 (`mysql-connector-j`)
+- AWS SDK v2 (SQS, S3)
+- `commonmark` com extensão de tabelas GFM (Markdown → HTML)
 - Lombok
-- Logback com `logstash-logback-encoder` (logs estruturados em JSON)
-- Micrometer + CloudWatch (métricas)
+- Logback com `logstash-logback-encoder` (logs JSON)
+- Micrometer com exportação para CloudWatch
+- JUnit 5, ArchUnit, GreenMail, Testcontainers (MySQL)
 - Docker / Docker Compose
-- JUnit 5, ArchUnit, GreenMail (SMTP de teste), Testcontainers (MySQL)
-
-## Estrutura do projeto
-
-```text
-src/
-├── main/
-│   ├── java/br/com/triaige/notification/
-│   │   ├── domain/         modelo e regras puras
-│   │   ├── application/    ports e casos de uso
-│   │   ├── adapter/        in/sqs, out/email, out/s3, out/http, out/persistence, out/sqs
-│   │   └── config/         wiring de beans e casos de uso
-│   └── resources/
-│       └── application.yml
-└── test/
-    └── ...
-```
 
 ## Pré-requisitos
 
-- Java 21+
-- Maven (ou o wrapper `mvnw`)
+- Java 21 e Maven
 - Docker e Docker Compose
-- MySQL acessível com o schema `triaige` compartilhado (provisionado via Ansible em `triaige-infra`)
-- Credenciais AWS válidas (fila real na AWS — não há LocalStack) e uma conta Gmail com App Password para o SMTP
+- MySQL acessível com o schema `triaige` (o seed está em [`triaige-infra`](https://github.com/TriAIge/triaige-infra), `ansible/files/triaige-schema-seed.sql`)
+- Credenciais AWS válidas e as filas já existentes na região (não há LocalStack)
+- Uma conta Gmail com App Password para o SMTP
 
 ## Configuração
 
-### Variáveis de ambiente
+Copie o `.env.example` para `.env` e preencha os valores. As filas são resolvidas na AWS pelo **nome** (`GetQueueUrl`, com cache em memória), sem URL fixa.
 
-Copie/ajuste o `.env` na raiz do projeto a partir do `.env.example`:
+| Variável | Obrigatória | Padrão | Descrição |
+|---|---|---|---|
+| `DB_URL` | Sim | `jdbc:mysql://localhost:3306/triaige?...` | URL JDBC do schema compartilhado |
+| `DB_USERNAME` / `DB_PASSWORD` | Sim | `triaige` / `triaige` | Credenciais do MySQL |
+| `SMTP_HOST` / `SMTP_PORT` | Não | `smtp.gmail.com` / `587` | Servidor SMTP (STARTTLS) |
+| `SMTP_USER` | Sim | vazio | Conta Gmail remetente |
+| `SMTP_APP_PASSWORD` | Sim | vazio | App Password de 16 dígitos (não a senha da conta) |
+| `NOTIFICATION_FROM_NAME` | Não | `Triaige` | Nome exibido como remetente |
+| `DASHBOARD_BASE_URL` | Não | `http://localhost:3000` | URL do portal usada no link do e-mail |
+| `AWS_REGION` | Não | `us-east-1` | Região AWS |
+| `AWS_PROFILE` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` | Não | — | Credenciais AWS; no Compose, `~/.aws` é montado no container |
+| `RESULTS_READY_QUEUE_NAME` | Não | `triaige-results-ready` | Fila Q3 |
+| `NOTIFICATION_RETRY_QUEUE_NAME` | Não | `triaige-notification-retry` | Fila de retry |
+| `NOTIFICATION_RETRY_DLQ_NAME` | Não | `triaige-notification-retry-dlq` | DLQ do retry |
+| `RESULTS_READY_CONSUMER_ENABLED` / `RETRY_CONSUMER_ENABLED` | Não | `true` / `true` | Liga cada consumidor |
+| `ORCHESTRATOR_BASE_URL` | Sim | `http://localhost:8080` | URL base do orchestrator |
+| `NOTIFICATION_INTERNAL_TOKEN` | Sim | `dev-local-internal-token` | Token enviado no callback; igual ao do orchestrator |
+| `SERVER_PORT` | Não | `8083` | Porta HTTP |
+| `SRV_NOTIFICATION_PORT` | Não | `8083` | Porta publicada no host pelo Compose |
+| `CLOUDWATCH_METRICS_ENABLED` | Não | `false` | Exporta métricas para o CloudWatch |
+| `LOG_LEVEL` | Não | `INFO` | Nível de log de `br.com.triaige` |
 
-```env
-DB_URL=
-DB_USERNAME=
-DB_PASSWORD=
+Os padrões existem só para desenvolvimento. Nunca versione credenciais, tokens ou senhas reais.
 
-SMTP_HOST=
-SMTP_PORT=
-SMTP_USER=
-SMTP_APP_PASSWORD=
-NOTIFICATION_FROM_NAME=
-
-DASHBOARD_BASE_URL=
-
-AWS_REGION=
-RESULTS_READY_QUEUE_NAME=
-NOTIFICATION_RETRY_QUEUE_NAME=
-NOTIFICATION_RETRY_DLQ_NAME=
-RETRY_CONSUMER_ENABLED=
-RESULTS_READY_CONSUMER_ENABLED=
-
-ORCHESTRATOR_BASE_URL=
-NOTIFICATION_INTERNAL_TOKEN=
-
-CLOUDWATCH_METRICS_ENABLED=
-LOG_LEVEL=
-SERVER_PORT=
-```
-
-> Nunca versione credenciais, tokens, senhas ou outros secrets reais no repositório.
-
-### Configuração local
-
-`application.yml` reflete o cenário suportado: MySQL real via `DB_URL`/`DB_USERNAME`/`DB_PASSWORD` (schema compartilhado com os demais serviços) e filas SQS resolvidas direto na AWS pelo **nome** (`GetQueueUrl`, com cache em memória) — não há LocalStack nem URL fixa em configuração. Rodar localmente exige credenciais AWS válidas no ambiente (variáveis de ambiente, perfil `~/.aws/credentials`, ou IAM role em produção) e as filas já existirem na região configurada.
-
-> O callback ao Orchestrator (`POST .../sessions/{sessionId}/notification-result`) exige `NOTIFICATION_INTERNAL_TOKEN` combinado com o mesmo valor configurado no `.env` do `triaige-srv-orchestrator`. É um reporte best-effort (1 retry com backoff fixo): se as duas tentativas falharem, o serviço apenas loga o erro — o envio do e-mail em si não é afetado.
-
-> As filas de retry/DLQ (`NOTIFICATION_RETRY_QUEUE_NAME`/`NOTIFICATION_RETRY_DLQ_NAME`) precisam existir na AWS antes de habilitar `RETRY_CONSUMER_ENABLED=true`, senão o consumer loga erro a cada poll tentando resolver uma fila inexistente.
+O callback ao orchestrator é best-effort (1 retry com backoff fixo): se as duas tentativas falharem, o serviço só registra o erro e o envio do e-mail não é afetado.
 
 ## Executando localmente
 
-### Executando com Docker
+### Docker Compose
 
 ```bash
 docker compose up --build
 ```
 
-Sobe o próprio serviço (porta `SRV_NOTIFICATION_PORT`, padrão `8083`), usando o MySQL local compartilhado com os demais serviços.
+Sobe só o serviço, na porta `SRV_NOTIFICATION_PORT` (padrão `8083`). O MySQL não faz parte do Compose: `DB_URL` precisa apontar para um banco alcançável de dentro do container (por exemplo, `host.docker.internal:3306`). Para encerrar, `docker compose down`.
 
-Para encerrar:
-
-```bash
-docker compose down
-```
-
-### Executando sem Docker
+### Sem Docker
 
 ```bash
 mvn spring-boot:run
 ```
 
-Exige o MySQL compartilhado acessível e credenciais AWS reais para o consumidor de fila.
+Exige o MySQL acessível em `DB_URL` e credenciais AWS no ambiente.
+
+### Build e run da imagem
+
+```bash
+docker build -t triaige-srv-notification .
+docker run -p 8083:8083 --env-file .env triaige-srv-notification
+```
 
 ## Testes
 
@@ -190,165 +161,70 @@ Exige o MySQL compartilhado acessível e credenciais AWS reais para o consumidor
 mvn test
 ```
 
-Cobertura: regra de roteamento e casos de uso com fakes (`SendCaseNotificationUseCaseTest`, `RetryCaseNotificationUseCaseTest`), classificação de erro e renderização HTML do adapter SMTP contra um servidor de teste em memória (`EmailSmtpGmailAdapterTest`, GreenMail), leitura do relatório no S3 (`S3ReportContentAdapterTest`), concorrência do claim atômico com MySQL real via Testcontainers (`MySqlDeliveryAdapterConcurrencyTest`) e a regra arquitetural hexagonal (`HexagonalArchitectureTest`, ArchUnit).
+Cobrem os casos de uso com fakes (`SendCaseNotificationUseCaseTest`, `RetryCaseNotificationUseCaseTest`), a classificação de erro e a renderização HTML contra um SMTP em memória (`EmailSmtpGmailAdapterTest`, GreenMail), a leitura do relatório (`S3ReportContentAdapterTest`), a concorrência do claim atômico com MySQL real via Testcontainers (`MySqlDeliveryAdapterConcurrencyTest`), a configuração de métricas (`CloudWatchMetricsConfigTest`) e a regra hexagonal (`HexagonalArchitectureTest`).
 
 ## API
 
-Este serviço não expõe endpoints REST de negócio — é primariamente um worker SQS. O único endpoint HTTP exposto é o de observabilidade:
+O serviço não expõe endpoints de negócio. O único endpoint HTTP é o de saúde:
 
 | Método | Endpoint | Descrição |
 |---|---|---|
-| `GET` | `/actuator/health` | Health check do processo (não reflete disponibilidade do SMTP — ver Observabilidade) |
+| `GET` | `/actuator/health` | Saúde do processo (não reflete a disponibilidade do SMTP) |
 
-## Fluxo principal
-
-```text
-Q3: resultado pronto (publicado pelo Orchestrator)
-   ↓
-Claim atômico da entrega (evita reprocessamento duplicado em redelivery do SQS)
-   ↓
-Busca do relatório completo no S3 (bucket curated)
-   ↓
-Resolução dos destinatários cadastrados da sessão
-   ↓
-Envio de e-mail por destinatário (SMTP Gmail, corpo em HTML)
-   ↓
-Falha retentável → agenda retry (backoff crescente) → esgotou tentativas → DLQ
-   ↓
-Callback ao Orchestrator com o resultado final da sessão
-```
+O serviço **chama** `POST /api/orchestrator/v1/sessions/{id}/notification-result`, uma chamada servidor-a-servidor autenticada por `X-Internal-Token`. A rota fica atrás do ALB (`/api/orchestrator/*`), portanto é alcançável pela internet; o token é a única proteção e precisa ser forte e mantido em segredo.
 
 ## Mensageria
 
-| Fila | Tipo | Uso |
+| Fila | Papel | Uso |
 |---|---|---|
-| `triaige-results-ready` (Q3) | Consumer | Contrato Orchestrator → Notification (mensagem mínima com bucket/chave do relatório) |
-| `triaige-notification-retry` (+ DLQ) | Producer/Consumer | Retry de envio com `DelaySeconds` crescente (30s/2min/10min); DLQ ao esgotar `maxReceiveCount` |
+| `triaige-results-ready` (Q3) | Consumer | Contrato orchestrator → notification (mensagem mínima com bucket e chave do relatório) |
+| `triaige-notification-retry` | Producer e consumer | Retry com `DelaySeconds` crescente (30s, 2min, 10min) |
+| `triaige-notification-retry-dlq` | DLQ | Recebe a mensagem ao esgotar o `maxReceiveCount` (3) |
 
 ## Banco de dados
 
-### Banco utilizado
+MySQL, schema `triaige`, compartilhado com os demais serviços. O schema é aplicado pelo `triaige-infra`.
 
-`MySQL` (schema `triaige`, compartilhado com os demais serviços)
+| Tabela | Acesso | Uso |
+|---|---|---|
+| `notification_recipients` | Leitura | Destinatários da sessão (nome, e-mail, canal), gravados pelo orchestrator ao criar a sessão |
+| `law_firm_contacts` | Leitura | Exclui destinatários cujo contato foi inativado depois da criação da sessão |
+| `notification_deliveries` | Leitura e escrita | Cada tentativa de envio, com status e claim atômico por sessão, destinatário e canal |
+| `audit_events`, `processing_steps` | Escrita | Auditoria e etapa de notificação |
 
-### Principais entidades
-
-- `notification_recipients`: destinatários cadastrados da sessão, com vínculo opcional a `law_firm_contacts`.
-- `notification_deliveries`: cada tentativa de envio, com canal, destino, status e claim atômico por sessão/destinatário/canal.
-- `audit_events` / `processing_steps`: trilha de auditoria compartilhada com os demais serviços.
+Os destinatários vêm de `law_firm_contacts`, cadastrados pelo escritório no portal do [`triaige-front-nextjs`](https://github.com/TriAIge/triaige-front-nextjs) (`/portal/config`): o orchestrator copia os contatos ativos para `notification_recipients` quando a sessão é criada.
 
 ## Integrações externas
 
-### SMTP (Gmail)
-
-**Finalidade:** envio dos e-mails de notificação ao escritório.
-
-**Tipo de comunicação:** SMTP com STARTTLS, autenticação por App Password (`spring-boot-starter-mail` / `JavaMailSender`).
-
-### triaige-srv-orchestrator
-
-**Finalidade:** origem do evento de resultado pronto (Q3) e destino do callback com o resultado final da notificação.
-
-**Tipo de comunicação:** SQS (consumer) + HTTP/REST (callback com `X-Internal-Token`).
-
-## Docker
-
-### Build da imagem
-
-```bash
-docker build -t triaige-srv-notification .
-```
-
-### Executando a imagem
-
-```bash
-docker run \
-  -p 8083:8083 \
-  --env-file .env \
-  triaige-srv-notification
-```
+- **SMTP Gmail:** envio dos e-mails com STARTTLS, autenticado por App Password (`spring-boot-starter-mail` / `JavaMailSender`).
+- **AWS S3:** leitura do relatório no bucket *curated*.
+- **AWS SQS:** filas Q3 e de retry.
 
 ## Observabilidade
 
-- Logs estruturados em JSON (`logstash-logback-encoder`) — nunca conteúdo do relatório ou dado pessoal.
-- Métricas via Micrometer (`NotificationSentCount`, `NotificationFailureCount`, `NotificationLatencyMs`, `SmtpAuthErrorCount`), exportação para CloudWatch desabilitada por padrão (`CLOUDWATCH_METRICS_ENABLED=true` para habilitar; namespace `Triaige/Notification`).
-- Health Check: `GET /actuator/health` — reflete apenas a saúde do processo, não a disponibilidade do SMTP (indicador de saúde do `spring-boot-starter-mail` desabilitado via `management.health.mail.enabled=false`), já que uma instabilidade do Gmail já tem tratamento próprio via retry/DLQ e não deve derrubar o health check das instâncias replicadas.
+- Logs JSON (`logstash-logback-encoder`), sem conteúdo do relatório nem dado pessoal. Em produção vão para o log group `/triaige/triaige-srv-notification`.
+- Métricas Micrometer no namespace `Triaige/Notification` (`NotificationSentCount`, `NotificationFailureCount`, `NotificationLatencyMs`, `SmtpAuthErrorCount`), exportadas com `CLOUDWATCH_METRICS_ENABLED=true`.
+- Health check: `GET /actuator/health`. O indicador de saúde do SMTP está desligado (`management.health.mail.enabled=false`), porque uma instabilidade do Gmail já é tratada por retry e DLQ e não deve derrubar as instâncias no ALB.
 
 ## Segurança
 
-- Callback ao Orchestrator autenticado por token interno (`X-Internal-Token`), chamada servidor-a-servidor não exposta via API Gateway.
-- Secrets (credenciais SMTP, credenciais AWS, senha do banco, token interno) configurados via variáveis de ambiente, fora do código.
-- Relatório de triagem já chega anonimizado (anonimização feita pelo `triaige-srv-mcp-ai`) antes de compor o corpo do e-mail.
+- Callback ao orchestrator autenticado por `X-Internal-Token` (ver [API](#api) sobre a exposição pelo ALB).
+- Secrets (SMTP, AWS, banco, token interno) via variáveis de ambiente, fora do código.
+- O relatório chega já anonimizado pelo `triaige-srv-mcp-ai`.
 
 ## Repositórios relacionados
 
-Este repositório faz parte do ecossistema **TriAIge**.
-
 | Repositório | Responsabilidade |
 |---|---|
-| `triaige-front-nextjs` | Site institucional e mockup de dashboard (Next.js / Tailwind) |
-| `triaige-srv-orchestrator` | Ingestão de documentos e orquestração do fluxo de triagem |
-| `triaige-srv-mcp-ai` | Pipeline de pré-processamento (OCR, anonimização, agrupamento) e raciocínio de IA |
-| `triaige-infra` | Provisionamento de infraestrutura AWS (Terraform + Ansible) |
+| [`triaige-front-nextjs`](https://github.com/TriAIge/triaige-front-nextjs) | Portal dos escritórios e painel da equipe TriAIge (Next.js), com API própria sobre o banco compartilhado |
+| [`triaige-srv-orchestrator`](https://github.com/TriAIge/triaige-srv-orchestrator) | Ingestão de documentos, orquestração do fluxo e geração do relatório final |
+| [`triaige-srv-mcp-ai`](https://github.com/TriAIge/triaige-srv-mcp-ai) | Pré-processamento (OCR, anonimização, agrupamento, resumo) e análise com IA |
+| [`triaige-infra`](https://github.com/TriAIge/triaige-infra) | Infraestrutura AWS (Terraform, Ansible e GitHub Actions) |
 
 ## Projeto acadêmico
 
-Projeto desenvolvido como Trabalho de Conclusão de Curso em:
-
-**Curso:** Sistemas de Informação
-**Instituição:** São Paulo Tech School
-**Ano:** 2026
-
-### Objetivo
-
-Aplicar IA generativa e engenharia de software para automatizar a triagem inicial de casos jurídicos, reduzindo o tempo de análise manual de documentos por escritórios de advocacia, com anonimização de dados sensíveis antes de qualquer processamento por IA.
-
-## Equipe
-
-<table>
-  <tr>
-    <td align="center">
-      <a href="https://github.com/GabrielNunees063">
-        <img src="https://avatars.githubusercontent.com/u/125298578?v=4" width="100px;"><br>
-        <sub><b>Gabriel Nunes</b></sub>
-      </a>
-    </td>
-    <td align="center">
-      <a href="https://github.com/Bielzinschiavo">
-        <img src="https://avatars.githubusercontent.com/u/125298078?v=4" width="100px;"><br>
-        <sub><b>Gabriel Schiavo</b></sub>
-      </a>
-    </td>
-    <td align="center">
-      <a href="https://github.com/gyuliapiqueira">
-        <img src="https://avatars.githubusercontent.com/u/125298346?v=4" width="100px;"><br>
-        <sub><b>Gyulia Piqueira</b></sub>
-      </a>
-    </td>
-  </tr>
-
-  <tr>
-    <td align="center" colspan="3">
-      <table>
-        <tr>
-          <td align="center">
-            <a href="https://github.com/Kaori2">
-              <img src="https://avatars.githubusercontent.com/u/125297000?v=4" width="100px;"><br>
-              <sub><b>Kaori Katayama</b></sub>
-            </a>
-          </td>
-          <td align="center">
-            <a href="https://github.com/Miguel-Araujo325">
-              <img src="https://avatars.githubusercontent.com/u/125296970?v=4" width="100px;"><br>
-              <sub><b>Miguel Araujo</b></sub>
-            </a>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>
+Trabalho de Conclusão de Curso de Sistemas de Informação na São Paulo Tech School (SPTech), 2026. Equipe e visão geral no [perfil da organização](https://github.com/TriAIge).
 
 ## Licença
 
-> Este projeto foi desenvolvido para fins acadêmicos.
+Distribuído sob a licença MIT — ver [LICENSE](LICENSE).
