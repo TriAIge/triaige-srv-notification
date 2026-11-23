@@ -13,10 +13,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
-/**
- * Busca o relatorio de triagem (markdown) direto na AWS real, sem LocalStack/endpoint override —
- * mesma decisao ja adotada para SQS neste servico.
- */
+/** Lê do S3 o relatório em Markdown que compõe o corpo do e-mail. */
 @Component
 public class S3ReportContentAdapter implements ReportContentPort {
 
@@ -37,7 +34,7 @@ public class S3ReportContentAdapter implements ReportContentPort {
             byte[] bytes = object.readAllBytes();
             return Optional.of(new String(bytes, StandardCharsets.UTF_8));
         } catch (IOException | RuntimeException e) {
-            log.warn("Falha ao buscar relatorio no S3 bucket={} key={}: {}", bucket, objectKey, e.getMessage());
+            log.warn("Falha ao buscar relatório no S3 bucket={} key={}: {}", bucket, objectKey, e.getMessage());
             return Optional.empty();
         }
     }

@@ -25,12 +25,11 @@ spring:
           writetimeout: 10000
 
 notification:
-  # Base do link do Dashboard (fora do escopo desta fase) incluido no corpo do e-mail.
+  # Base do link do portal incluído no corpo do e-mail.
   dashboard-base-url: ${DASHBOARD_BASE_URL:http://localhost:3000}
   from-name: ${NOTIFICATION_FROM_NAME:Triaige}
-  # Callback POST .../sessions/{sessionId}/notification-result no Orchestrator, ao concluir a
-  # notificacao (sucesso ou falha) de todos os destinatarios de uma sessao. Mesmo esquema de
-  # X-Internal-Token usado pelo triaige-srv-mcp-ai.
+  # Callback .../sessions/{sessionId}/notification-result ao orchestrator, com X-Internal-Token,
+  # quando todos os destinatários da sessão chegam a um desfecho.
   orchestrator-callback:
     base-url: ${ORCHESTRATOR_BASE_URL:http://localhost:8080}
     result-path-template: /api/orchestrator/v1/sessions/{sessionId}/notification-result
@@ -60,11 +59,8 @@ aws:
 
 management:
   health:
-    # O health check do target group deve refletir se o PROCESSO esta saudavel, nao
-    # se o Gmail esta disponivel agora. Sem isso, o indicador padrao do Actuator autentica no
-    # SMTP a cada chamada de /actuator/health e derruba as DUAS instancias da ALB junto (mesmo
-    # servico replicado) por uma instabilidade do lado do Gmail, que ja tem tratamento proprio
-    # (retry/DLQ) - nao deveria também tirar o worker de rotacao.
+    # O health check reflete só o processo: uma instabilidade do Gmail já é tratada por retry e
+    # DLQ e não deve tirar as duas instâncias do ALB.
     mail:
       enabled: false
   endpoints:

@@ -17,10 +17,8 @@ public class AwsProperties {
     public static class Sqs {
 
         /**
-         * Nomes das filas (nao URLs) — a URL real e sempre resolvida em runtime direto na AWS via
-         * {@code GetQueueUrl}, nunca hardcoded/configurada como endpoint (ver
-         * {@code SqsQueueUrlResolver}). Isso elimina a necessidade de LocalStack ou qualquer
-         * endpoint override para rodar contra a AWS de verdade.
+         * Nomes das filas, não URLs: a URL é resolvida na AWS em tempo de execução
+         * ({@code SqsQueueUrlResolver}), sem endpoint configurado.
          */
         private String resultsReadyQueueName = "triaige-results-ready";
         private String notificationRetryQueueName = "triaige-notification-retry";

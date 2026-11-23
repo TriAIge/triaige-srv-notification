@@ -24,9 +24,8 @@ import java.util.stream.IntStream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Valida o item de DoD "claim atomico antes do SMTP validado com duas instancias/reprocessamento
- * concorrente": MySQL real via Testcontainers (nao e emulacao de AWS - nao
- * substitui/depende de LocalStack, so o motor de banco de dados).
+ * Claim atômico com duas instâncias concorrentes, contra um MySQL real via Testcontainers (exige
+ * Docker).
  */
 @Testcontainers
 class MySqlDeliveryAdapterConcurrencyTest {
@@ -50,8 +49,8 @@ class MySqlDeliveryAdapterConcurrencyTest {
         jdbcTemplate = new JdbcTemplate(dataSource);
         adapter = new MySqlDeliveryAdapter(jdbcTemplate);
 
-        // Schema minimo: so notification_deliveries, sem FKs (o adapter nao faz join com outras
-        // tabelas), com a unique key da migration V1 ja aplicada.
+        // Schema mínimo: só notification_deliveries, sem FKs (o adapter não faz join), com a unique
+        // key da migration V1.
         jdbcTemplate.execute("""
                 CREATE TABLE notification_deliveries (
                     id                    CHAR(36)     NOT NULL,

@@ -3,13 +3,8 @@ package br.com.triaige.notification.domain.model;
 import java.util.UUID;
 
 /**
- * Unidade de trabalho publicada/consumida na fila {@code triaige-notification-retry}.
- *
- * <p>Carrega os ingredientes crus (protocolo, ponteiro do relatorio no S3) em vez de
- * assunto/corpo ja montados: o relatorio (seção "Corpo do e-mail" do README) e buscado de novo no
- * S3 a cada tentativa — inclusive a primeira, via {@code NotificationSender} — porque o conteudo
- * e imutavel uma vez escrito, então refazer a busca é barato e evita ticket com corpo vazio caso
- * a falha original tenha sido justamente ao buscar o relatorio (ver {@link DeliveryErrorCode#REPORT_FETCH_ERROR}).</p>
+ * Item da fila {@code triaige-notification-retry}. Leva só os ponteiros do relatório no S3, não o
+ * corpo pronto, porque o relatório é lido de novo a cada tentativa.
  */
 public record RetryTicket(
         UUID sessionId,

@@ -20,10 +20,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Cobre a matriz de roteamento e a idempotencia por claim, usando apenas
- * fakes das ports — sem rede, banco ou SMTP real (criterio de aceite).
- */
+/** Roteamento de canal e idempotência do claim, só com fakes dos ports (sem rede, banco ou SMTP). */
 class SendCaseNotificationUseCaseTest {
 
     private static final String DASHBOARD_URL = "http://localhost:3000";
@@ -112,7 +109,7 @@ class SendCaseNotificationUseCaseTest {
         Recipient recipient = new Recipient(recipientId, sessionId, "Fulano", "fulano@example.com", null, Channel.EMAIL);
 
         InMemoryDeliveryRepository deliveryRepository = new InMemoryDeliveryRepository();
-        // Simula outra instancia que ja fez o claim primeiro.
+        // Simula outra instância que já fez o claim.
         deliveryRepository.tryClaim(sessionId, recipientId, Channel.EMAIL, "fulano@example.com");
 
         ScriptedNotificationChannel channel = new ScriptedNotificationChannel();

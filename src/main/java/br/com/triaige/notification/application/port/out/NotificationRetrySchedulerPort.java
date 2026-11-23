@@ -2,15 +2,12 @@ package br.com.triaige.notification.application.port.out;
 
 import br.com.triaige.notification.domain.model.RetryTicket;
 
-/**
- * Port de saida — abstrai a fila de retry/DLQ do mecanismo real (SQS) para que a
- * camada application decida "quando" retentar sem conhecer SDK de fila nenhum.
- */
+/** Agenda novas tentativas sem que a camada de aplicação conheça o SQS. */
 public interface NotificationRetrySchedulerPort {
 
-    /** Publica o ticket com o delay correspondente ao seu attemptNumber (30s/2min/10min). */
+    /** Publica o ticket com o atraso da tentativa (30 s, 2 min, 10 min). */
     void scheduleRetry(RetryTicket ticket);
 
-    /** Encerramento definitivo: publica na DLQ de retry apos esgotar as tentativas (maxReceiveCount=3). */
+    /** Publica na DLQ de retry depois de esgotar as tentativas. */
     void sendToDeadLetter(RetryTicket ticket);
 }

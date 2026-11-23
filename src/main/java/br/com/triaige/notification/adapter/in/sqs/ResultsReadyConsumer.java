@@ -16,11 +16,7 @@ import software.amazon.awssdk.services.sqs.model.ReceiveMessageRequest;
 
 import java.util.List;
 
-/**
- * Adapter de entrada: consome Q3 ({@code triaige-results-ready}) diretamente na AWS
- * (URL resolvida por nome via {@link SqsQueueUrlResolver} — sem endpoint override/LocalStack) e
- * aciona {@link EventConsumerPort}.
- */
+/** Consome a fila {@code triaige-results-ready} e aciona o {@link EventConsumerPort}. */
 @Component
 public class ResultsReadyConsumer {
 
@@ -67,11 +63,9 @@ public class ResultsReadyConsumer {
             ResultsReadyMessageDto dto = objectMapper.readValue(message.body(), ResultsReadyMessageDto.class);
 
             if (!SUPPORTED_SCHEMA_VERSION.equals(dto.schemaVersion())) {
-                // Versao nao suportada -> DLQ existente de Q3, sem retry aplicativo.
-                // Suposicao registrada: nao movemos a mensagem manualmente para a DLQ; deixamos de
-                // deletar e a redrive policy ja provisionada em Q3 (fora do escopo deste servico)
-                // encaminha para a DLQ apos o maxReceiveCount configurado na infra.
-                log.error("schemaVersion nao suportada '{}' messageId={} - mensagem mantida para a DLQ existente de Q3",
+                // Versão não suportada: a mensagem não é apagada, e a redrive policy da fila a
+                // move para a triaige-results-ready-dlq após o maxReceiveCount.
+                log.error("schemaVersion não suportada '{}' messageId={} - mensagem mantida para a triaige-results-ready-dlq",
                         dto.schemaVersion(), message.messageId());
                 return;
             }
@@ -81,7 +75,7 @@ public class ResultsReadyConsumer {
             eventConsumerPort.handleResultsReady(event);
             deleteMessage(queueUrl, message);
         } catch (Exception e) {
-            log.error("Falha ao processar mensagem Q3 messageId={} - sera reprocessada no proximo poll (ou DLQ apos maxReceiveCount de Q3)",
+            log.error("Falha ao processar mensagem da triaige-results-ready messageId={} - será reprocessada no próximo poll (ou irá para a DLQ após o maxReceiveCount)",
                     message.messageId(), e);
         }
     }

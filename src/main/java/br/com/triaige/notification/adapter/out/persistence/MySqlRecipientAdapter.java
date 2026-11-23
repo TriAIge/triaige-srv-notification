@@ -13,10 +13,8 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Le {@code notification_recipients}. "Ativo" nao e um campo direto da tabela — a unica
- * flag de ativacao existente no schema e {@code law_firm_contacts.ativo}; um destinatario ligado a
- * um contato desativado e excluido, e um destinatario sem {@code contact_id} (cadastro avulso da
- * sessao) e sempre considerado ativo. Suposicao registrada por ausencia de campo explicito.
+ * Lê notification_recipients. A tabela não tem campo de ativo: o destinatário ligado a um contato
+ * inativo é ignorado, e o sem contact_id (cadastro avulso) é sempre considerado ativo.
  */
 @Component
 public class MySqlRecipientAdapter implements RecipientRepositoryPort {
