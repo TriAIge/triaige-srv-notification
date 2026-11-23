@@ -20,13 +20,8 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 
 /**
- * Caso de uso principal: consome o evento Q3 ja validado e decide, para cada
- * destinatario ativo da sessao, se/como notificar.
- *
- * <p>Regra de roteamento de canal fica aqui, na camada application, isolada do adapter
- * de e-mail — quando um adapter de WhatsApp/SMS for adicionado, a regra passa a valer de fato sem
- * reescrever este caso de uso. A busca do relatorio no S3 e a montagem/envio da mensagem ficam em
- * {@link NotificationSender}, compartilhado com {@link RetryCaseNotificationUseCase}.</p>
+ * Processa a mensagem da {@code triaige-results-ready} para cada destinatário ativo. A regra de canal
+ * fica aqui, fora do adapter, para valer também quando houver WhatsApp ou SMS.
  */
 public class SendCaseNotificationUseCase implements EventConsumerPort {
 
@@ -61,7 +56,7 @@ public class SendCaseNotificationUseCase implements EventConsumerPort {
         List<Recipient> recipients = recipientRepository.findActiveBySessionId(event.sessionId());
 
         if (recipients.isEmpty()) {
-            log.warn("Nenhum destinatario ativo para sessionId={}, protocolo={}", event.sessionId(), event.protocolo());
+            log.warn("Nenhum destinatário ativo para sessionId={}, protocolo={}", event.sessionId(), event.protocolo());
             orchestratorCallback.reportOutcome(event.sessionId(), event.correlationId(),
                     NotificationOutcome.NOTIFICATION_FAILED, 0, 0);
             auditPort.recordDispatchStep(event.sessionId(), true, null);
@@ -78,24 +73,24 @@ public class SendCaseNotificationUseCase implements EventConsumerPort {
 
     private void processRecipient(ResultsReadyEvent event, Recipient recipient) {
         if (!recipient.hasEmail()) {
-            // Sem email disponivel -> FAILED direto, sem tentativa de envio, por destinatario.
+            // Sem e-mail: FAILED direto, sem tentativa de envio.
             deliveryRepository.markFailed(event.sessionId(), recipient.id(), Channel.EMAIL, "",
                     DeliveryErrorCode.NO_EMAIL_AVAILABLE);
             auditPort.recordEvent(NotificationAuditEventType.NOTIFICATION_FAILED,
                     event.sessionId(), event.lawFirmId(), event.correlationId(),
-                    "Destinatario " + recipient.id() + " sem e-mail cadastrado");
+                    "Destinatário " + recipient.id() + " sem e-mail cadastrado");
             return;
         }
 
         boolean claimed = deliveryRepository.tryClaim(event.sessionId(), recipient.id(), Channel.EMAIL, recipient.email());
         if (!claimed) {
-            log.info("Entrega ja existente para sessionId={}, recipientId={}, canal=EMAIL - ignorando (idempotencia)",
+            log.info("Entrega já existente para sessionId={}, recipientId={}, canal=EMAIL - ignorando (idempotência)",
                     event.sessionId(), recipient.id());
             return;
         }
 
-        // Canal_preferencial != EMAIL mas email presente -> envia por e-mail mesmo assim,
-        // registrando a divergencia como observacao (mesmo em caso de sucesso).
+        // Canal preferencial diferente de EMAIL, mas com e-mail: envia por e-mail e registra a
+        // divergência como observação.
         String divergenceNote = recipient.canalPreferencial() != null && recipient.canalPreferencial() != Channel.EMAIL
                 ? "canal preferencial era " + recipient.canalPreferencial() + ", apenas EMAIL suportado nesta fase"
                 : null;

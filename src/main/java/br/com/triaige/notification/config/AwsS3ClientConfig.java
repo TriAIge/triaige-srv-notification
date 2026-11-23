@@ -6,11 +6,7 @@ import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 
-/**
- * Cliente S3 conectando direto na AWS real — sem endpoint override, sem LocalStack, mesmo padrao
- * do {@link AwsSqsClientConfig}. Usado apenas para buscar o relatorio de triagem (markdown) que
- * compoe o corpo do e-mail (ver {@code S3ReportContentAdapter}).
- */
+/** Cliente S3 direto na AWS, sem endpoint alternativo; usado só para ler o relatório que vai no e-mail. */
 @Configuration
 public class AwsS3ClientConfig {
 

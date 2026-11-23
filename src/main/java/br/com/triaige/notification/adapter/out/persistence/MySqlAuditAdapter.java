@@ -10,12 +10,8 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Escreve {@code audit_events} e {@code processing_steps}. Sempre insere uma linha nova
- * (sem upsert): redelivery concorrente de Q3 pode gerar registros de auditoria duplicados em um
- * cenario raro (instancia crash antes do delete da mensagem), mas isso nao duplica o envio de
- * e-mail em si — essa garantia vem de {@link MySqlDeliveryAdapter#tryClaim}. Trade-off aceito
- * para nao introduzir uma constraint de unicidade em processing_steps fora do que a spec pede
- * explicitamente.
+ * Sempre insere uma linha nova em audit_events e processing_steps. Uma reentrega da mensagem pode
+ * duplicar a auditoria, mas não o e-mail, que é protegido por {@link MySqlDeliveryAdapter#tryClaim}.
  */
 @Component
 public class MySqlAuditAdapter implements AuditPort {

@@ -8,11 +8,8 @@ import br.com.triaige.notification.domain.model.NotificationOutcome;
 import java.util.UUID;
 
 /**
- * Colaborador interno (nao e port) compartilhado por {@link SendCaseNotificationUseCase} e
- * {@link RetryCaseNotificationUseCase}: verifica, apos cada rodada de processamento de uma sessao
- * (lote inicial do Q3, ou um ticket de retry), se todos os destinatarios ja chegaram a um desfecho
- * terminal (SENT/FAILED, nenhum PENDING/RETRY_SCHEDULED restante) e, se sim, reporta o resultado
- * agregado ao Orchestrator exatamente uma vez.
+ * Depois de cada rodada (lote inicial ou retry), verifica se todos os destinatários chegaram a SENT ou
+ * FAILED e, se sim, informa o resultado ao orchestrator uma única vez.
  */
 final class NotificationOutcomeReporter {
 

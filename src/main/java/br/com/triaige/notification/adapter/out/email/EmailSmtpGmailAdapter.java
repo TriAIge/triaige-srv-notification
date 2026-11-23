@@ -29,11 +29,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
-/**
- * Unica implementacao de {@link NotificationChannelPort} desta fase. Depende de
- * {@link JavaMailSender}; domain/application nunca importam esta classe nem Jakarta Mail
- * diretamente.
- */
+/** Única implementação de {@link NotificationChannelPort}; o domínio e a aplicação não dependem do Jakarta Mail. */
 @Component
 public class EmailSmtpGmailAdapter implements NotificationChannelPort {
 
@@ -117,7 +113,7 @@ public class EmailSmtpGmailAdapter implements NotificationChannelPort {
 
     private DeliveryResult classify(MailException ex, String maskedDestino, NotificationMessage message) {
         if (ex instanceof MailAuthenticationException) {
-            log.error("Falha de autenticacao SMTP (credencial invalida/expirada) - afeta todos os envios sessionId={}",
+            log.error("Falha de autenticação SMTP (credencial inválida ou expirada) - afeta todos os envios sessionId={}",
                     message.metadata().sessionId());
             return DeliveryResult.failure(DeliveryErrorCode.SMTP_AUTH_ERROR);
         }
@@ -125,27 +121,27 @@ public class EmailSmtpGmailAdapter implements NotificationChannelPort {
         Throwable cause = ex.getCause();
 
         if (cause instanceof SendFailedException sendFailed) {
-            // Destinatario invalido/rejeitado ou caixa cheia - nao retentavel.
+            // Destinatário inválido, rejeitado ou caixa cheia: não retentável.
             String smtpResponse = safeMessage(sendFailed);
-            log.warn("Destinatario rejeitado pelo SMTP destino={} sessionId={}: {}",
+            log.warn("Destinatário rejeitado pelo SMTP destino={} sessionId={}: {}",
                     maskedDestino, message.metadata().sessionId(), smtpResponse);
             return DeliveryResult.failure(smtpResponse);
         }
 
         if (isTimeout(cause) || (ex instanceof MailSendException && isTimeout(ex))) {
-            log.warn("Timeout de conexao SMTP destino={} sessionId={} - retentavel", maskedDestino, message.metadata().sessionId());
+            log.warn("Timeout de conexão SMTP destino={} sessionId={} - retentável", maskedDestino, message.metadata().sessionId());
             return DeliveryResult.failure(DeliveryErrorCode.CHANNEL_TIMEOUT);
         }
 
         if (looksLikeRateLimit(ex) || looksLikeRateLimit(cause)) {
-            log.warn("Limite de envio do Gmail atingido destino={} sessionId={} - retentavel com backoff maior",
+            log.warn("Limite de envio do Gmail atingido destino={} sessionId={} - retentável com espera maior",
                     maskedDestino, message.metadata().sessionId());
             return DeliveryResult.failure(DeliveryErrorCode.CHANNEL_RATE_LIMITED);
         }
 
-        // Comportamento conservador: erro nao mapeado -> nao retentavel, preserva
-        // a mensagem crua para diagnostico em vez de assumir retry indefinido.
-        log.warn("Erro SMTP nao classificado destino={} sessionId={}: {}",
+        // Erro não mapeado é tratado como não retentável, guardando a mensagem original para
+        // diagnóstico em vez de arriscar retry sem fim.
+        log.warn("Erro SMTP não classificado destino={} sessionId={}: {}",
                 maskedDestino, message.metadata().sessionId(), safeMessage(ex));
         return DeliveryResult.failure(safeMessage(ex));
     }
@@ -186,17 +182,13 @@ public class EmailSmtpGmailAdapter implements NotificationChannelPort {
                 return ids[0];
             }
         } catch (MessagingException ignored) {
-            // Sem Message-ID disponivel - gera um local apenas para correlacao em log/metricas.
+            // Sem Message-ID: gera um local só para correlacionar logs e métricas.
         }
         return "local-" + UUID.randomUUID();
     }
 
-    /**
-     * O corpo montado por {@code NotificationContentFactory} e markdown (o relatorio de triagem
-     * vem assim do S3) — renderiza para HTML aqui, no adapter, porque e uma decisao de
-     * apresentacao especifica do canal e-mail (um futuro adapter de WhatsApp/SMS mandaria o mesmo
-     * markdown como texto puro, sem essa conversao).
-     */
+    // Converte o Markdown em HTML aqui porque é uma decisão do canal e-mail; outro canal enviaria o
+    // mesmo Markdown como texto.
     private String renderMarkdownToHtml(String markdown) {
         Node document = markdownParser.parse(markdown);
         String contentHtml = htmlRenderer.render(document);

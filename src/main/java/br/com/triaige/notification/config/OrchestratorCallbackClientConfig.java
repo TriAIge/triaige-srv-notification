@@ -8,7 +8,7 @@ import org.springframework.web.client.RestClient;
 
 import java.time.Duration;
 
-/** Client de saída triaige-srv-notification -> Orchestrator (callback .../notification-result). */
+/** Cliente HTTP do callback ao orchestrator (.../notification-result). */
 @Configuration
 public class OrchestratorCallbackClientConfig {
 

@@ -1,13 +1,8 @@
 package br.com.triaige.notification.domain.service;
 
 /**
- * Monta assunto/corpo do e-mail. O corpo inclui o relatorio de triagem completo (markdown) buscado
- * do S3 pela camada application — ver Javadoc de {@code ResultsReadyEvent} para o racional dessa
- * decisao.
- *
- * <p>Continua sendo uma funcao pura (sem I/O): quem busca o relatorio e o caller
- * ({@code NotificationSender}), esta classe so formata o texto final a partir do markdown ja
- * obtido.</p>
+ * Monta assunto e corpo do e-mail com o relatório completo em Markdown. Função pura: quem lê o
+ * relatório no S3 é o {@code NotificationSender}.
  */
 public final class NotificationContentFactory {
 

@@ -11,10 +11,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Resolve a URL real de uma fila SQS diretamente na AWS a partir do nome ({@code GetQueueUrl}),
- * em vez de depender de uma URL fixa em configuracao/endpoint override (esse era o unico motivo
- * para existir um "endpoint customizado" estilo LocalStack nos outros servicos — aqui nao existe).
- * Resultado cacheado em memoria: o nome->URL de uma fila SQS nao muda em runtime.
+ * Resolve a URL da fila pelo nome ({@code GetQueueUrl}) e guarda em memória, já que a URL de uma
+ * fila não muda enquanto ela existir.
  */
 @Component
 public class SqsQueueUrlResolver {
@@ -38,12 +36,12 @@ public class SqsQueueUrlResolver {
             log.info("Fila '{}' resolvida na AWS: {}", queueName, url);
             return url;
         } catch (QueueDoesNotExistException ex) {
-            throw new IllegalStateException("Fila SQS '" + queueName + "' nao existe na AWS/regiao configurada "
-                    + "(ver secao 11.2 da spec - provisionamento em triaige-infra)", ex);
+            throw new IllegalStateException("Fila SQS '" + queueName + "' não existe na região configurada "
+                    + "(as filas são criadas pelo triaige-infra)", ex);
         }
     }
 
-    /** Usado apos falha de envio para invalidar um cache potencialmente obsoleto (ex.: fila recriada). */
+    /** Descarta a URL em cache depois de uma falha de envio (por exemplo, fila recriada). */
     public void invalidate(String queueName) {
         cache.remove(queueName);
     }

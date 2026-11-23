@@ -11,16 +11,13 @@ import org.springframework.stereotype.Component;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 
-/**
- * Publica em {@code triaige-notification-retry} / {@code triaige-notification-retry-dlq}
- * URLs resolvidas direto na AWS por nome (sem LocalStack/endpoint override).
- */
+/** Publica na {@code triaige-notification-retry} e na {@code triaige-notification-retry-dlq}. */
 @Component
 public class SqsNotificationRetrySchedulerAdapter implements NotificationRetrySchedulerPort {
 
     private static final Logger log = LoggerFactory.getLogger(SqsNotificationRetrySchedulerAdapter.class);
 
-    // Delay crescente por tentativa: 30s, 2min, 10min.
+    // Atraso crescente por tentativa: 30 s, 2 min, 10 min.
     private static final int[] DELAY_SECONDS_BY_ATTEMPT = {30, 120, 600};
     private static final int MAX_SQS_DELAY_SECONDS = 900;
 
@@ -48,7 +45,7 @@ public class SqsNotificationRetrySchedulerAdapter implements NotificationRetrySc
     @Override
     public void sendToDeadLetter(RetryTicket ticket) {
         send(awsProperties.getSqs().getNotificationRetryDlqName(), ticket, 0);
-        log.error("Tentativas de retry esgotadas (maxReceiveCount) - enviado a DLQ sessionId={} recipientId={} attemptNumber={}",
+        log.error("Tentativas de retry esgotadas (maxReceiveCount) - enviado à DLQ sessionId={} recipientId={} attemptNumber={}",
                 ticket.sessionId(), ticket.recipientId(), ticket.attemptNumber());
     }
 

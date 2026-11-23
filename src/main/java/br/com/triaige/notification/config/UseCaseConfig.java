@@ -14,8 +14,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Fronteira de wiring: os casos de uso sao classes Java puras (sem anotacoes Spring),
- * construidas aqui com os adapters concretos injetados apenas pelas interfaces de port.
+ * Os casos de uso são classes Java puras, sem anotações Spring; aqui eles recebem os adapters pelas
+ * interfaces de port.
  */
 @Configuration
 public class UseCaseConfig {

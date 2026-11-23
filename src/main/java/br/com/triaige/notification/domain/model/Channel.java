@@ -1,10 +1,6 @@
 package br.com.triaige.notification.domain.model;
 
-/**
- * Canal de notificacao. Apenas EMAIL esta implementado nesta fase; WHATSAPP/SMS
- * existem como valores validos de {@code canal_preferencial} vindos do banco,
- * mas nao possuem adapter de envio ainda.
- */
+/** Só EMAIL tem adapter; WHATSAPP e SMS existem porque são valores válidos de {@code canal_preferencial}. */
 public enum Channel {
     EMAIL,
     WHATSAPP,

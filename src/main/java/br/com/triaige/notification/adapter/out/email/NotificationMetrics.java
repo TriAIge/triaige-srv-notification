@@ -7,10 +7,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.concurrent.TimeUnit;
 
-/**
- * Metricas (namespace CloudWatch {@code Triaige/Notification}, configurado em
- * {@code application.yml} via {@code management.cloudwatch}).
- */
+/** Métricas do serviço (namespace CloudWatch {@code Triaige/Notification}). */
 @Component
 public class NotificationMetrics {
 

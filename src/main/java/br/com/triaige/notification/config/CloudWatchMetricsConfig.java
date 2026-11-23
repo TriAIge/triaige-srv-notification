@@ -14,10 +14,8 @@ import software.amazon.awssdk.services.cloudwatch.CloudWatchAsyncClient;
 import java.time.Duration;
 
 /**
- * Exporta as métricas do Micrometer para o CloudWatch (namespace em
- * management.cloudwatch.metrics.export.namespace). O Spring Boot 3 não autoconfigura o
- * registry do CloudWatch, então sem este bean as métricas ficavam só em memória.
- * Ligado por CLOUDWATCH_METRICS_ENABLED=true (desligado em dev).
+ * O Spring Boot 3 não autoconfigura o registry do CloudWatch; sem este bean as métricas ficam só em
+ * memória. Ligado por CLOUDWATCH_METRICS_ENABLED=true.
  */
 @Configuration
 @ConditionalOnProperty(name = "management.cloudwatch.metrics.export.enabled", havingValue = "true")

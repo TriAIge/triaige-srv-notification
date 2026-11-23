@@ -12,14 +12,8 @@ import br.com.triaige.notification.domain.model.RetryTicket;
 import java.util.UUID;
 
 /**
- * Colaborador interno (nao e port) usado por {@link NotificationSender} para interpretar o
- * {@link DeliveryResult} de uma tentativa de envio (ou de busca do relatorio) e decidir: marcar
- * sucesso, agendar retry ou falhar definitivamente.
- *
- * <p>Contagem de tentativas: {@code attemptsAlreadyMade=0} no caminho inicial (evento Q3, ainda sem
- * ticket de retry); ao processar um {@link RetryTicket} de attemptNumber N, passa-se N. Com
- * maxReceiveCount=3, a 4a tentativa total (attemptsAlreadyMade=3) que ainda falhar de
- * forma retentavel esgota as tentativas e vai para a DLQ.</p>
+ * Decide, a partir do resultado de uma tentativa, entre marcar sucesso, agendar retry ou falhar.
+ * A tentativa inicial conta 0; com 3 retries, a quarta falha retentável vai para a DLQ.
  */
 final class DeliveryOutcomeHandler {
 
@@ -43,7 +37,7 @@ final class DeliveryOutcomeHandler {
         if (result.sucesso()) {
             deliveryRepository.markSent(sessionId, recipientId, canal, result.providerMessageId(), successNote);
             auditPort.recordEvent(NotificationAuditEventType.NOTIFICATION_SENT, sessionId, lawFirmId, correlationId,
-                    "Notificacao enviada com sucesso para o destinatario " + recipientId);
+                    "Notificação enviada com sucesso para o destinatário " + recipientId);
             return;
         }
 
@@ -58,10 +52,10 @@ final class DeliveryOutcomeHandler {
 
         deliveryRepository.markFailed(sessionId, recipientId, canal, destino, result.errorMessage());
         auditPort.recordEvent(NotificationAuditEventType.NOTIFICATION_FAILED, sessionId, lawFirmId, correlationId,
-                "Falha ao enviar notificacao para o destinatario " + recipientId + ": " + result.errorMessage());
+                "Falha ao enviar notificação para o destinatário " + recipientId + ": " + result.errorMessage());
 
         if (retryable) {
-            // Tentativas esgotadas (retentavel, mas ja chegou ao limite) -> DLQ.
+            // Retentável, mas já no limite de tentativas: vai para a DLQ.
             RetryTicket exhausted = new RetryTicket(sessionId, recipientId, lawFirmId, canal, destino, protocolo,
                     resultBucket, summaryObjectKey, correlationId, attemptsAlreadyMade + 1, result.errorMessage());
             retryScheduler.sendToDeadLetter(exhausted);

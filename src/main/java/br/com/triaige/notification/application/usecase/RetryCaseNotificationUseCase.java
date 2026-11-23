@@ -10,14 +10,8 @@ import br.com.triaige.notification.application.port.out.ReportContentPort;
 import br.com.triaige.notification.domain.model.RetryTicket;
 
 /**
- * Reprocessa um {@link RetryTicket} vindo de {@code triaige-notification-retry}.
- * Delega para {@link NotificationSender}, que refaz a busca do relatorio no S3 e a montagem da
- * mensagem do zero a cada tentativa (o ticket so carrega os ponteiros, nao o conteudo pronto).
- *
- * <p>Apos a tentativa, verifica via {@link NotificationOutcomeReporter} se este era o ultimo
- * destinatario pendente da sessao — se sim, e so aqui que o desfecho agregado passa a poder ser
- * conhecido (o lote inicial de {@link SendCaseNotificationUseCase} ja tinha terminado com este
- * destinatario ainda em RETRY_SCHEDULED).</p>
+ * Reprocessa um {@link RetryTicket} da {@code triaige-notification-retry}. Pode ser aqui que o último
+ * destinatário pendente termina, então também verifica o desfecho da sessão.
  */
 public class RetryCaseNotificationUseCase implements RetryConsumerPort {
 

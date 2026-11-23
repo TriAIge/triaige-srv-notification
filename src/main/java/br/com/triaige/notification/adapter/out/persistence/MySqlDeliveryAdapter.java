@@ -10,16 +10,11 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Escreve {@code notification_deliveries} com claim atomico via
- * {@code INSERT ... ON DUPLICATE KEY UPDATE} sobre a unique key
- * {@code uk_notification_deliveries_session_recipient_canal} (migration em
- * {@code src/main/resources/db/V1__notification_deliveries_unique_key.sql}).
+ * Claim atômico em notification_deliveries com {@code INSERT ... ON DUPLICATE KEY UPDATE id = id}
+ * sobre {@code uk_notification_deliveries_session_recipient_canal}.
  *
- * <p>Semantica do driver MySQL (sem a flag CLIENT_FOUND_ROWS, padrao do mysql-connector-j): uma
- * {@code INSERT ... ON DUPLICATE KEY UPDATE} retorna 1 linha afetada quando insere uma linha nova,
- * e 0 quando a chave ja existia e a clausula de UPDATE nao alterou nenhum valor (aqui, {@code id = id},
- * um no-op deliberado). E exatamente esse 1 vs 0 que decide qual instancia "venceu" o claim quando
- * duas instancias do servico consomem a mesma mensagem de Q3 concorrentemente.</p>
+ * <p>Sem a flag CLIENT_FOUND_ROWS, o driver devolve 1 linha afetada quando insere e 0 quando a chave
+ * já existia; é esse 1 ou 0 que decide qual instância envia o e-mail.</p>
  */
 @Component
 public class MySqlDeliveryAdapter implements DeliveryRepositoryPort {
@@ -44,8 +39,8 @@ public class MySqlDeliveryAdapter implements DeliveryRepositoryPort {
             WHERE session_id = ? AND recipient_id = ? AND canal = ?
             """;
 
-    // Upsert (nao exige tryClaim previo) para cobrir o caminho "sem e-mail", que nunca
-    // chega a tentar envio, e tambem serve para marcar como FAILED uma entrega ja claimed.
+    // Upsert sem exigir tryClaim, para cobrir o destinatário sem e-mail (que nunca tenta envio) e
+    // para marcar como FAILED uma entrega já reivindicada.
     private static final String UPSERT_FAILED_SQL = """
             INSERT INTO notification_deliveries
                 (id, session_id, recipient_id, canal, destino, status, error_message, created_at, updated_at)

@@ -18,10 +18,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Sem LocalStack/Gmail real: GreenMail sobe um servidor SMTP de teste em memoria
- * ("testes de adapters podem usar... servidor SMTP de teste").
- */
+/** GreenMail sobe um servidor SMTP de teste em memória, sem Gmail real. */
 class EmailSmtpGmailAdapterTest {
 
     private static final String TEST_USER = "notification@triaige.test";
@@ -103,7 +100,7 @@ class EmailSmtpGmailAdapterTest {
     @Test
     void servidorInalcancavel_classificaComoTimeoutRetentavel() {
         JavaMailSenderImpl mailSender = new JavaMailSenderImpl();
-        mailSender.setHost("192.0.2.1"); // TEST-NET-1 (RFC 5737) - nao roteavel, garante timeout
+        mailSender.setHost("192.0.2.1"); // TEST-NET-1 (RFC 5737): endereço não roteável, garante timeout
         mailSender.setPort(25);
         mailSender.setUsername(TEST_USER);
         mailSender.setPassword(TEST_PASSWORD);

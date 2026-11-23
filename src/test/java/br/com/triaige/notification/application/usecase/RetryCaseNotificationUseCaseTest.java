@@ -16,7 +16,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** maxReceiveCount=3 - a 4a tentativa total que ainda falhar de forma retentavel vai para a DLQ. */
+/** Com maxReceiveCount=3, a quarta tentativa que ainda falhar de forma retentável vai para a DLQ. */
 class RetryCaseNotificationUseCaseTest {
 
     private static final String DASHBOARD_URL = "http://localhost:3000";
@@ -76,7 +76,7 @@ class RetryCaseNotificationUseCaseTest {
                 channel, StubReportContentPort.returning("conteudo"), deliveryRepository, new RecordingAuditPort(),
                 retryScheduler, new RecordingOrchestratorCallback(), DASHBOARD_URL);
 
-        // attemptNumber=3 e o ultimo ticket de retry (3a tentativa de retry = 4a tentativa total).
+        // attemptNumber=3 é o último ticket de retry (quarta tentativa no total).
         useCase.handleRetry(ticket(sessionId, recipientId, 3));
 
         assertThat(deliveryRepository.get(sessionId, recipientId, Channel.EMAIL).status()).isEqualTo("FAILED");

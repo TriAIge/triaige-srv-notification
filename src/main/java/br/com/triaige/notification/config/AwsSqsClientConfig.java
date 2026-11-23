@@ -8,9 +8,8 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sqs.SqsClient;
 
 /**
- * Cliente SQS conectando direto na AWS real — sem endpoint override, sem LocalStack. Credenciais
- * vem da cadeia padrao do SDK v2 ({@link DefaultCredentialsProvider}: variaveis de ambiente,
- * perfil, ou IAM role da instancia EC2 em producao).
+ * Cliente SQS direto na AWS, sem endpoint alternativo. Credenciais pela cadeia padrão do SDK
+ * (variáveis de ambiente, perfil ou role da EC2).
  */
 @Configuration
 @EnableConfigurationProperties(AwsProperties.class)

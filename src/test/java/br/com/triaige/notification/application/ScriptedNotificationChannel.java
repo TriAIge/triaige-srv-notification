@@ -9,7 +9,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 
-/** Fake de {@link NotificationChannelPort}: devolve resultados pre-programados, um por chamada. */
+/** Fake de {@link NotificationChannelPort}: devolve resultados pré-programados, um por chamada. */
 public class ScriptedNotificationChannel implements NotificationChannelPort {
 
     private final Deque<DeliveryResult> script = new ArrayDeque<>();

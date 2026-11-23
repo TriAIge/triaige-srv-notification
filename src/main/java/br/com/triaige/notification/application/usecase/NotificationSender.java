@@ -15,12 +15,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Colaborador interno compartilhado por {@link SendCaseNotificationUseCase} (tentativa inicial) e
- * {@link RetryCaseNotificationUseCase} (retries): busca o relatorio no S3, monta a mensagem e
- * envia pelo canal — sempre do zero, inclusive em retries, porque o relatorio e imutavel uma vez
- * escrito e refazer a busca e barato; evita carregar corpo/assunto pre-montados no
- * {@link br.com.triaige.notification.domain.model.RetryTicket}, que ficariam vazios justamente no
- * caso em que a falha original foi ao buscar o relatorio.
+ * Busca o relatório, monta a mensagem e envia, sempre do zero, inclusive nos retries: o relatório não
+ * muda depois de gravado, e o ticket não fica sem corpo quando a falha foi justamente na leitura.
  */
 final class NotificationSender {
 

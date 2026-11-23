@@ -8,10 +8,8 @@ import org.junit.jupiter.api.Test;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 /**
- * Critério de aceite principal: domain/application nao podem importar
- * nenhuma biblioteca de infraestrutura (SMTP, driver MySQL, SDK AWS, cliente SQS) — nem, por
- * escolha deste servico, o proprio framework Spring, para que os casos de uso sejam construidos
- * manualmente em config/ com valores/ports simples (ver UseCaseConfig).
+ * domain e application não podem depender de bibliotecas de infraestrutura nem do Spring, para que
+ * os casos de uso sejam montados manualmente em UseCaseConfig.
  */
 class HexagonalArchitectureTest {
 

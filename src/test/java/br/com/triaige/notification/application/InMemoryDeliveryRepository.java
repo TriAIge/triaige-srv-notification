@@ -10,10 +10,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/**
- * Fake em memoria de {@link DeliveryRepositoryPort} para os testes do core (testes
- * unitarios de domain/application rodam sem rede/banco real).
- */
+/** Fake em memória de {@link DeliveryRepositoryPort}, para testar domain e application sem banco. */
 public class InMemoryDeliveryRepository implements DeliveryRepositoryPort {
 
     public record Key(UUID sessionId, UUID recipientId, Channel canal) {

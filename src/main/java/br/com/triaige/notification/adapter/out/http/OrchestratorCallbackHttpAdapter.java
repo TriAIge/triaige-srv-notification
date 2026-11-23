@@ -12,12 +12,8 @@ import org.springframework.web.client.RestClient;
 import java.util.UUID;
 
 /**
- * Callback síncrono ao Orchestrator: POST .../sessions/{sessionId}/notification-result com
- * X-Internal-Token, mesmo esquema usado pelo triaige-srv-mcp-ai (OrchestratorCallbackClient).
- * 1 retry com backoff fixo, best-effort: se ambas as tentativas falharem, apenas loga — não
- * existe fila de fallback aqui (gap aceito, mesmo padrão de TriggerAiAnalysisUseCase.publishResultsReady
- * no Orchestrator: o resultado da notificação em si já foi persistido/entregue, só o espelho de
- * status na sessão fica desatualizado).
+ * Callback ao orchestrator com X-Internal-Token e um retry com espera fixa. Se as duas tentativas
+ * falharem, só registra no log: o e-mail já foi tratado, só o status da sessão fica desatualizado.
  */
 @Component
 public class OrchestratorCallbackHttpAdapter implements OrchestratorSessionCallbackPort {
@@ -47,18 +43,18 @@ public class OrchestratorCallbackHttpAdapter implements OrchestratorSessionCallb
         try {
             send(path, payload);
         } catch (Exception first) {
-            log.warn("Orchestrator notification-result callback failed, retrying once: sessionId={}, error={}",
+            log.warn("Falha no callback notification-result ao orchestrator, tentando mais uma vez: sessionId={}, error={}",
                     sessionId, first.getMessage());
             sleep(RETRY_DELAY_MS);
             try {
                 send(path, payload);
             } catch (Exception second) {
-                log.error("Orchestrator notification-result callback exhausted retries: sessionId={}, outcome={}",
+                log.error("Callback notification-result ao orchestrator esgotou as tentativas: sessionId={}, outcome={}",
                         sessionId, outcome, second);
                 return;
             }
         }
-        log.info("Orchestrator notification-result callback delivered: sessionId={}, outcome={}", sessionId, outcome);
+        log.info("Callback notification-result entregue ao orchestrator: sessionId={}, outcome={}", sessionId, outcome);
     }
 
     private void send(String path, NotificationResultPayload payload) {

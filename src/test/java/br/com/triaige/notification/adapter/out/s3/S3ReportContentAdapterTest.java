@@ -17,10 +17,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-/**
- * Sem LocalStack: {@link S3Client} mockado (Mockito) - suficiente para validar a montagem da
- * requisicao e a decodificacao da resposta, sem depender de infraestrutura AWS real em teste.
- */
+/** S3Client mockado: valida a montagem da requisição e a leitura da resposta sem AWS real. */
 class S3ReportContentAdapterTest {
 
     @Test

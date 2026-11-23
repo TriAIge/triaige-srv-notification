@@ -16,10 +16,7 @@ import software.amazon.awssdk.services.sqs.model.ReceiveMessageRequest;
 
 import java.util.List;
 
-/**
- * Adapter de entrada para {@code triaige-notification-retry}, URL resolvida direto na
- * AWS por nome (sem LocalStack/endpoint override), assim como {@link ResultsReadyConsumer}.
- */
+/** Consome a fila {@code triaige-notification-retry} e aciona o {@link RetryConsumerPort}. */
 @Component
 public class RetryQueueConsumer {
 
@@ -66,7 +63,7 @@ public class RetryQueueConsumer {
             retryConsumerPort.handleRetry(ticket);
             deleteMessage(queueUrl, message);
         } catch (Exception e) {
-            log.error("Falha ao processar ticket de retry messageId={} - sera reprocessado no proximo poll",
+            log.error("Falha ao processar ticket de retry messageId={} - será reprocessado no próximo poll",
                     message.messageId(), e);
         }
     }
